@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">vivo Live Photo Test</string>
+    <string name="title">vivo Live Photo 配对测试</string>
+    <string name="description">选择一张 vivo 原始动态照片。应用会读取 JPG 的 Live Photo ID，并在 MediaStore 中查找对应 MP4。</string>
+    <string name="select_live_photo">选择 Live Photo</string>
+    <string name="initial_status">等待选择照片。</string>
+</resources>
