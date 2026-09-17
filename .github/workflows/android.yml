@@ -5,6 +5,9 @@ on:
     branches:
       - main
       - feature/vivo-livephoto-demo
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
