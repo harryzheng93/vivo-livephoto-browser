@@ -4,11 +4,14 @@ on:
   push:
     branches:
       - main
-      - feature/vivo-livephoto-demo
   pull_request:
     branches:
       - main
   workflow_dispatch:
+
+concurrency:
+  group: android-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
