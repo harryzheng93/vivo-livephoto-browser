@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.widget.Button
+import android.widget.EditText
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -13,6 +14,9 @@ import androidx.core.content.ContextCompat
 
 class MainActivity : AppCompatActivity() {
     private lateinit var resultText: TextView
+    private lateinit var serverUrlInput: EditText
+    private lateinit var uploadButton: Button
+    private var lastPairResult: PairSearchResult? = null
 
     private val imagePicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) inspect(uri)
@@ -30,7 +34,11 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         resultText = findViewById(R.id.resultText)
+        serverUrlInput = findViewById(R.id.serverUrlInput)
+        uploadButton = findViewById(R.id.uploadButton)
+
         findViewById<Button>(R.id.selectButton).setOnClickListener {
+            clearCurrentPair()
             if (hasFullMediaAccess()) {
                 resultText.text = permissionSummary() + "\n\n请选择一张 vivo Live Photo。"
                 imagePicker.launch("image/*")
@@ -39,20 +47,32 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        uploadButton.setOnClickListener { uploadCurrentPair() }
         resultText.text = permissionSummary() + "\n\n等待选择照片。"
     }
 
+    private fun clearCurrentPair() {
+        lastPairResult = null
+        uploadButton.isEnabled = false
+    }
+
     private fun inspect(uri: Uri) {
+        clearCurrentPair()
         resultText.text = permissionSummary() + "\n\n正在解析 JPG 并查询 MediaStore 视频……"
 
         Thread {
-            val text = try {
+            try {
                 val finder = MediaStorePairFinder(contentResolver)
                 val image = finder.inspectSelectedImage(uri)
                 val result = finder.findCompanionVideo(image)
-                renderResult(result)
+
+                runOnUiThread {
+                    lastPairResult = result
+                    uploadButton.isEnabled = result.matched != null
+                    resultText.text = renderResult(result)
+                }
             } catch (e: Exception) {
-                buildString {
+                val text = buildString {
                     appendLine(permissionSummary())
                     appendLine()
                     appendLine("ERROR")
@@ -60,9 +80,74 @@ class MainActivity : AppCompatActivity() {
                     appendLine()
                     appendLine("如果错误与 MediaStore 权限有关，请在系统设置中给本应用完整的“照片和视频”访问权限后重试。")
                 }
+                runOnUiThread {
+                    clearCurrentPair()
+                    resultText.text = text
+                }
             }
+        }.start()
+    }
 
-            runOnUiThread { resultText.text = text }
+    private fun uploadCurrentPair() {
+        val result = lastPairResult
+        val matched = result?.matched
+        if (result == null || matched == null) {
+            resultText.append("\n\nUPLOAD ERROR\n没有已验证的 JPG + MP4 配对。")
+            uploadButton.isEnabled = false
+            return
+        }
+
+        val plan = try {
+            LivePhotoUploadPlan.create(
+                serverInput = serverUrlInput.text.toString(),
+                imageName = result.image.displayName,
+                videoName = matched.displayName,
+                imageLivePhotoId = result.image.livePhotoId,
+                videoLivePhotoId = matched.livePhotoId
+            )
+        } catch (e: IllegalArgumentException) {
+            resultText.append("\n\nUPLOAD ERROR\n${e.message ?: "上传参数无效"}")
+            return
+        }
+
+        uploadButton.isEnabled = false
+        resultText.append(
+            "\n\nUPLOAD\n------\nendpoint: ${plan.endpoint}\n" +
+                "正在原样流式上传 JPG + MP4……"
+        )
+
+        Thread {
+            try {
+                val response = contentResolver.openInputStream(result.image.uri).use { imageInput ->
+                    requireNotNull(imageInput) { "无法打开 JPG 输入流" }
+                    contentResolver.openInputStream(matched.uri).use { videoInput ->
+                        requireNotNull(videoInput) { "无法打开 MP4 输入流" }
+                        LivePhotoUploader().upload(
+                            plan = plan,
+                            imageInput = imageInput,
+                            videoInput = videoInput,
+                            imageContentType = contentResolver.getType(result.image.uri) ?: "image/jpeg",
+                            videoContentType = contentResolver.getType(matched.uri) ?: "video/mp4"
+                        )
+                    }
+                }
+
+                runOnUiThread {
+                    resultText.append(
+                        "\n\nUPLOAD RESULT\n-------------\n" +
+                            "HTTP ${response.statusCode}\n${response.body}"
+                    )
+                    uploadButton.isEnabled = lastPairResult?.matched != null
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    resultText.append(
+                        "\n\nUPLOAD ERROR\n" +
+                            e::class.java.simpleName + ": " + (e.message ?: "(no message)")
+                    )
+                    uploadButton.isEnabled = lastPairResult?.matched != null
+                }
+            }
         }.start()
     }
 
@@ -90,6 +175,8 @@ class MainActivity : AppCompatActivity() {
             appendLine("MP4 path: ${matched.relativePath ?: "(unknown)"}")
             appendLine("MP4 livePhotoId: ${matched.livePhotoId}")
             appendLine("vivoMediaExtInfo: ${matched.hasVivoMediaExtInfo}")
+            appendLine()
+            appendLine("已启用“上传完整 Live Photo”。输入电脑测试服务器地址后即可验证端到端传输。")
         } else {
             appendLine("MATCH = FALSE")
             when {
