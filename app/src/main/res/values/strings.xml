@@ -1,7 +1,10 @@
 <resources>
     <string name="app_name">vivo Live Photo Test</string>
-    <string name="title">vivo Live Photo 配对测试</string>
-    <string name="description">选择一张 vivo 原始动态照片。应用会读取 JPG 的 Live Photo ID，并在 MediaStore 中查找对应 MP4。</string>
+    <string name="title">vivo Live Photo 配对与上传测试</string>
+    <string name="description">选择一张 vivo 原始动态照片。应用会读取 JPG 的 Live Photo ID，在 MediaStore 中查找对应 MP4；配对成功后可将两个原始文件上传到局域网测试服务器。</string>
     <string name="select_live_photo">选择 Live Photo</string>
+    <string name="server_address">测试服务器地址</string>
+    <string name="server_address_hint">http://192.168.1.100:8000</string>
+    <string name="upload_live_photo">上传完整 Live Photo</string>
     <string name="initial_status">等待选择照片。</string>
 </resources>
