@@ -256,7 +256,7 @@ Sequence:
 
 If any insert, copy, or post-write validation fails, delete every MediaStore row created during that restore attempt and delete temporary files. The user should not be left with a half-restored pair.
 
-For Android versions below 29, the project may keep its existing minimum compatibility behavior, but the X200s validation path targets modern scoped storage.
+For Android versions below 29, the new **restore-from-server** action is disabled with an explicit diagnostic message. The existing app may continue to install on its current minimum SDK, but this restoration experiment requires API 29+ because it depends on `RELATIVE_PATH` and `IS_PENDING`. The X200s validation path therefore uses modern scoped storage only.
 
 ## Gallery Verification
 
