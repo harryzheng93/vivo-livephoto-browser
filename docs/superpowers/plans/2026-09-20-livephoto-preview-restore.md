@@ -189,8 +189,12 @@ git commit -m "feat: add Live Photo read APIs and gallery"
 - Create: `app/src/main/java/com/harryzheng/vivolivephoto/ServerEndpoint.kt`
 - Create: `app/src/main/java/com/harryzheng/vivolivephoto/ServerLivePhotoModels.kt`
 - Create: `app/src/main/java/com/harryzheng/vivolivephoto/LivePhotoServerClient.kt`
-- Create matching JVM tests
-- Modify: `UploadEndpoint.kt`, `UploadEndpointTest.kt`, `app/build.gradle.kts`
+- Create: `app/src/test/java/com/harryzheng/vivolivephoto/ServerEndpointTest.kt`
+- Create: `app/src/test/java/com/harryzheng/vivolivephoto/ServerLivePhotoModelsTest.kt`
+- Create: `app/src/test/java/com/harryzheng/vivolivephoto/LivePhotoServerClientTest.kt`
+- Modify: `app/src/main/java/com/harryzheng/vivolivephoto/UploadEndpoint.kt`
+- Modify: `app/src/test/java/com/harryzheng/vivolivephoto/UploadEndpointTest.kt`
+- Modify: `app/build.gradle.kts`
 
 **Interfaces:**
 - `ServerEndpoint(baseUrl)` with `uploadUrl`, `listUrl`, `galleryUrl`, `absolute(path)`, `fromUserInput(input)`
@@ -254,18 +258,20 @@ Parser requires:
 
 Run `gradle testDebugUnitTest --stacktrace`
 
-Then commit all Task 3 files with:
+Then:
 
 ```bash
+git add app/build.gradle.kts app/src/main/java/com/harryzheng/vivolivephoto/ServerEndpoint.kt app/src/main/java/com/harryzheng/vivolivephoto/ServerLivePhotoModels.kt app/src/main/java/com/harryzheng/vivolivephoto/LivePhotoServerClient.kt app/src/main/java/com/harryzheng/vivolivephoto/UploadEndpoint.kt app/src/test/java/com/harryzheng/vivolivephoto/ServerEndpointTest.kt app/src/test/java/com/harryzheng/vivolivephoto/ServerLivePhotoModelsTest.kt app/src/test/java/com/harryzheng/vivolivephoto/LivePhotoServerClientTest.kt app/src/test/java/com/harryzheng/vivolivephoto/UploadEndpointTest.kt
 git commit -m "feat: add Live Photo server client"
 ```
 
 ### Task 4: Download verification and paired restore naming
 
 **Files:**
-- Create: `DownloadedLivePhotoVerifier.kt`
-- Create: `RestorePolicy.kt`
-- Create matching JVM tests
+- Create: `app/src/main/java/com/harryzheng/vivolivephoto/DownloadedLivePhotoVerifier.kt`
+- Create: `app/src/main/java/com/harryzheng/vivolivephoto/RestorePolicy.kt`
+- Create: `app/src/test/java/com/harryzheng/vivolivephoto/DownloadedLivePhotoVerifierTest.kt`
+- Create: `app/src/test/java/com/harryzheng/vivolivephoto/RestorePolicyTest.kt`
 
 **Interfaces:**
 - `VerifiedLivePhotoDownload(manifest, imageFile, videoFile)`
@@ -294,7 +300,13 @@ Cover:
 
 - [ ] **Step 3: Verify RED**
 
-Run Task 4 tests only; expected unresolved verifier/policy classes.
+Run:
+
+```bash
+gradle testDebugUnitTest --tests 'com.harryzheng.vivolivephoto.DownloadedLivePhotoVerifierTest' --tests 'com.harryzheng.vivolivephoto.RestorePolicyTest' --stacktrace
+```
+
+Expected: unresolved verifier/policy classes.
 
 - [ ] **Step 4: Implement verification**
 
@@ -313,15 +325,16 @@ Run `gradle testDebugUnitTest --stacktrace`
 Commit:
 
 ```bash
+git add app/src/main/java/com/harryzheng/vivolivephoto/DownloadedLivePhotoVerifier.kt app/src/main/java/com/harryzheng/vivolivephoto/RestorePolicy.kt app/src/test/java/com/harryzheng/vivolivephoto/DownloadedLivePhotoVerifierTest.kt app/src/test/java/com/harryzheng/vivolivephoto/RestorePolicyTest.kt
 git commit -m "feat: verify downloads and plan restore names"
 ```
 
 ### Task 5: Transaction-safe MediaStore restore
 
 **Files:**
-- Create: `LivePhotoRestoreCoordinator.kt`
-- Create: `AndroidMediaStoreGateway.kt`
-- Create: `LivePhotoRestoreCoordinatorTest.kt`
+- Create: `app/src/main/java/com/harryzheng/vivolivephoto/LivePhotoRestoreCoordinator.kt`
+- Create: `app/src/main/java/com/harryzheng/vivolivephoto/AndroidMediaStoreGateway.kt`
+- Create: `app/src/test/java/com/harryzheng/vivolivephoto/LivePhotoRestoreCoordinatorTest.kt`
 
 **Interfaces:**
 - `MediaRef(uri: String)`
@@ -342,7 +355,13 @@ Cover:
 
 - [ ] **Step 2: Verify RED**
 
-Run only `LivePhotoRestoreCoordinatorTest`; expected unresolved coordinator/gateway.
+Run:
+
+```bash
+gradle testDebugUnitTest --tests 'com.harryzheng.vivolivephoto.LivePhotoRestoreCoordinatorTest' --stacktrace
+```
+
+Expected: unresolved coordinator/gateway.
 
 - [ ] **Step 3: Implement coordinator**
 
@@ -375,17 +394,18 @@ Expected: tests PASS and debug APK exists.
 - [ ] **Step 6: Commit**
 
 ```bash
+git add app/src/main/java/com/harryzheng/vivolivephoto/LivePhotoRestoreCoordinator.kt app/src/main/java/com/harryzheng/vivolivephoto/AndroidMediaStoreGateway.kt app/src/test/java/com/harryzheng/vivolivephoto/LivePhotoRestoreCoordinatorTest.kt
 git commit -m "feat: restore Live Photo pair through MediaStore"
 ```
 
 ### Task 6: UI wiring, diagnostics, docs, and final CI
 
 **Files:**
-- Modify: `MainActivity.kt`
-- Modify: `RestorePolicy.kt`
-- Modify: `activity_main.xml`
-- Modify: `strings.xml`
-- Create: `RestoreDiagnosticsTest.kt`
+- Modify: `app/src/main/java/com/harryzheng/vivolivephoto/MainActivity.kt`
+- Modify: `app/src/main/java/com/harryzheng/vivolivephoto/RestorePolicy.kt`
+- Modify: `app/src/main/res/layout/activity_main.xml`
+- Modify: `app/src/main/res/values/strings.xml`
+- Create: `app/src/test/java/com/harryzheng/vivolivephoto/RestoreDiagnosticsTest.kt`
 - Modify: `docs/upload-test.md`
 - Verify existing workflow.
 
@@ -477,6 +497,7 @@ Expected: both suites PASS and `app-debug.apk` exists.
 Commit:
 
 ```bash
+git add app/src/main/java/com/harryzheng/vivolivephoto/MainActivity.kt app/src/main/java/com/harryzheng/vivolivephoto/RestorePolicy.kt app/src/main/res/layout/activity_main.xml app/src/main/res/values/strings.xml app/src/test/java/com/harryzheng/vivolivephoto/RestoreDiagnosticsTest.kt docs/upload-test.md
 git commit -m "feat: add Live Photo preview and restore flow"
 ```
 
