@@ -4,7 +4,7 @@ import tempfile
 import threading
 import unittest
 from urllib.error import HTTPError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 from livephoto_upload_server import Handler, SafeThreadingHTTPServer, find_live_photo_id, read_chunked_body, verify_pair
 from livephoto_store import persist_verified_item
@@ -66,10 +66,6 @@ class LivePhotoUploadServerTest(unittest.TestCase):
         self.assertEqual(b"Wikipedia in\r\n\r\nchunks.", read_chunked_body(io.BytesIO(raw)))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class LivePhotoReadApiTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -127,3 +123,36 @@ class LivePhotoReadApiTest(unittest.TestCase):
             self.assertIn(word, html)
         self.assertNotIn("innerHTML", html)
         self.assertNotIn(self.image.decode("ascii"), html)
+
+    def test_rejects_executable_image_content_type(self):
+        boundary = "unsafe-upload-boundary"
+        image = b'<script>alert(1)</script> com.android.camera.livephoto:"' + LIVE_ID.encode("ascii") + b'"'
+        video = b'vivoMediaExtInfo com.android.camera.livephoto:"' + LIVE_ID.encode("ascii") + b'"'
+        parts = []
+        for name, filename, content_type, data in (
+            ("image", "attack.jpg", "text/html", image),
+            ("video", "attack.mp4", "video/mp4", video),
+        ):
+            parts.append(("--%s\r\n" % boundary).encode("ascii"))
+            parts.append(('Content-Disposition: form-data; name="%s"; filename="%s"\r\n' % (name, filename)).encode("ascii"))
+            parts.append(("Content-Type: %s\r\n\r\n" % content_type).encode("ascii"))
+            parts.append(data + b"\r\n")
+        parts.extend([
+            ("--%s\r\n" % boundary).encode("ascii"),
+            b'Content-Disposition: form-data; name="livePhotoId"\r\n\r\n',
+            LIVE_ID.encode("ascii") + b"\r\n",
+            ("--%s--\r\n" % boundary).encode("ascii"),
+        ])
+        request = Request(
+            self.base + "/api/live-photo",
+            data=b"".join(parts),
+            headers={"Content-Type": "multipart/form-data; boundary=%s" % boundary},
+            method="POST",
+        )
+        with self.assertRaises(HTTPError) as failure:
+            urlopen(request)
+        self.assertEqual(400, failure.exception.code)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -224,6 +224,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
+        self.send_header("X-Content-Type-Options", "nosniff")
         if filename:
             self.send_header("Content-Disposition", 'attachment; filename="%s"' % filename)
         self.end_headers()
@@ -271,7 +272,8 @@ class Handler(BaseHTTPRequestHandler):
                     with open(media_path(self.save_root, item_id, kind), "rb") as source:
                         data = source.read()
                     filename = item[kind + "Filename"] if parse_qs(url.query).get("download") == ["1"] else None
-                    self._send_bytes(200, data, item[kind + "ContentType"], filename)
+                    safe_type = "image/jpeg" if kind == "image" else "video/mp4"
+                    self._send_bytes(200, data, safe_type, filename)
                 else:
                     raise KeyError(path)
             except KeyError:
@@ -300,6 +302,10 @@ class Handler(BaseHTTPRequestHandler):
 
             image = files["image"]
             video = files["video"]
+            if image["content_type"].lower() != "image/jpeg":
+                raise ValueError("image content type must be image/jpeg")
+            if video["content_type"].lower() != "video/mp4":
+                raise ValueError("video content type must be video/mp4")
             result = verify_pair(image["data"], video["data"], submitted_id)
 
             if result["success"]:

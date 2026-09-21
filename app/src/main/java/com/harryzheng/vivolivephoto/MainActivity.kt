@@ -21,11 +21,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var serverUrlInput: EditText
     private lateinit var uploadButton: Button
     private lateinit var serverItemSpinner: Spinner
+    private lateinit var loadServerItemsButton: Button
     private lateinit var restoreButton: Button
     private lateinit var openRestoredButton: Button
     private var lastPairResult: PairSearchResult? = null
     private var serverItems: List<ServerLivePhotoItem> = emptyList()
     private var restoredImageUri: Uri? = null
+    private var restoreInProgress = false
 
     private val imagePicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) inspect(uri)
@@ -46,6 +48,7 @@ class MainActivity : AppCompatActivity() {
         serverUrlInput = findViewById(R.id.serverUrlInput)
         uploadButton = findViewById(R.id.uploadButton)
         serverItemSpinner = findViewById(R.id.serverItemSpinner)
+        loadServerItemsButton = findViewById(R.id.loadServerItemsButton)
         restoreButton = findViewById(R.id.restoreButton)
         openRestoredButton = findViewById(R.id.openRestoredButton)
 
@@ -61,7 +64,7 @@ class MainActivity : AppCompatActivity() {
 
         uploadButton.setOnClickListener { uploadCurrentPair() }
         findViewById<Button>(R.id.openGalleryButton).setOnClickListener { openWebGallery() }
-        findViewById<Button>(R.id.loadServerItemsButton).setOnClickListener { loadServerItems() }
+        loadServerItemsButton.setOnClickListener { loadServerItems() }
         restoreButton.setOnClickListener { restoreSelectedItem() }
         openRestoredButton.setOnClickListener { openRestoredImage() }
         resultText.text = permissionSummary() + "\n\n等待选择照片。"
@@ -100,10 +103,12 @@ class MainActivity : AppCompatActivity() {
                         android.R.layout.simple_spinner_item,
                         labels,
                     ).apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
-                    restoreButton.isEnabled = items.isNotEmpty() && Build.VERSION.SDK_INT >= 29
+                    updateRestoreEnabled()
                     resultText.append("\n加载完成：${items.size} 项。")
                     if (Build.VERSION.SDK_INT < 29) {
                         resultText.append("\n恢复功能需要 Android 10 / API 29+。")
+                    } else if (!hasFullMediaAccess()) {
+                        resultText.append("\n恢复前需要完整的照片和视频访问权限，以可靠检查两类 MediaStore 名称冲突。")
                     }
                 }
             } catch (e: Exception) {
@@ -122,47 +127,63 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val selected = serverItems.getOrNull(serverItemSpinner.selectedItemPosition) ?: return
+        if (!hasFullMediaAccess()) {
+            resultText.append("\n\nRESTORE ERROR\n恢复前需要完整的照片和视频访问权限。")
+            updateRestoreEnabled()
+            return
+        }
         val endpoint = try {
             configuredEndpoint()
         } catch (e: IllegalArgumentException) {
             resultText.append("\n\nRESTORE ERROR\n${e.message ?: "服务器地址无效"}")
             return
         }
+        restoreInProgress = true
         restoreButton.isEnabled = false
+        loadServerItemsButton.isEnabled = false
         restoredImageUri = null
         openRestoredButton.isEnabled = false
         resultText.append("\n\nRESTORE\n正在下载并校验 ${selected.imageFilename} …")
 
         Thread {
             val tempDirectory = java.io.File(cacheDir, "livephoto_restore")
-            tempDirectory.mkdirs()
-            val imageFile = java.io.File.createTempFile("image-", ".jpg", tempDirectory)
-            val videoFile = java.io.File.createTempFile("video-", ".mp4", tempDirectory)
             try {
-                val client = LivePhotoServerClient(endpoint)
-                val manifest = client.manifest(selected.itemId)
-                client.download(manifest.imageUrl, imageFile)
-                client.download(manifest.videoUrl, videoFile)
-                val verified = DownloadedLivePhotoVerifier.verify(manifest, imageFile, videoFile)
-                val restored = LivePhotoRestoreCoordinator(
-                    AndroidMediaStoreGateway(contentResolver),
-                ).restore(verified)
+                val restored = RestoreTempFiles.withFiles(tempDirectory) { imageFile, videoFile ->
+                    val client = LivePhotoServerClient(endpoint)
+                    val manifest = client.manifest(selected.itemId)
+                    client.download(manifest.imageUrl, imageFile)
+                    client.download(manifest.videoUrl, videoFile)
+                    val verified = DownloadedLivePhotoVerifier.verify(manifest, imageFile, videoFile)
+                    LivePhotoRestoreCoordinator(
+                        AndroidMediaStoreGateway(contentResolver),
+                    ).restore(verified)
+                }
                 runOnUiThread {
                     restoredImageUri = Uri.parse(restored.image.uri)
                     openRestoredButton.isEnabled = true
-                    restoreButton.isEnabled = serverItems.isNotEmpty()
+                    finishRestoreUi()
                     resultText.append("\n\n${RestoreDiagnostics.format(restored)}")
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    restoreButton.isEnabled = serverItems.isNotEmpty()
+                    finishRestoreUi()
                     resultText.append("\n\nRESTORE ERROR\n${e::class.java.simpleName}: ${e.message ?: "(no message)"}")
                 }
-            } finally {
-                imageFile.delete()
-                videoFile.delete()
             }
         }.start()
+    }
+
+    private fun finishRestoreUi() {
+        restoreInProgress = false
+        loadServerItemsButton.isEnabled = true
+        updateRestoreEnabled()
+    }
+
+    private fun updateRestoreEnabled() {
+        restoreButton.isEnabled = !restoreInProgress &&
+            serverItems.isNotEmpty() &&
+            Build.VERSION.SDK_INT >= 29 &&
+            hasFullMediaAccess()
     }
 
     private fun openRestoredImage() {

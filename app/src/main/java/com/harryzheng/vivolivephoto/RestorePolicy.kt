@@ -28,6 +28,8 @@ data class PostWriteMedia(
     val sha256: String,
     val livePhotoId: String?,
     val hasVivoMediaExtInfo: Boolean,
+    val displayName: String? = null,
+    val relativePath: String? = null,
 )
 
 object RestoreValidation {
@@ -35,6 +37,8 @@ object RestoreValidation {
         verified: VerifiedLivePhotoDownload,
         image: PostWriteMedia,
         video: PostWriteMedia,
+        expectedNames: RestoreNames? = null,
+        expectedRelativePath: String? = null,
     ) {
         val manifest = verified.manifest
         require(image.sha256 == manifest.imageSha256) { "Restored image SHA-256 mismatch" }
@@ -43,6 +47,36 @@ object RestoreValidation {
         require(video.livePhotoId == manifest.livePhotoId) { "Restored video ID mismatch" }
         require(image.livePhotoId == video.livePhotoId) { "Restored IDs do not match" }
         require(video.hasVivoMediaExtInfo) { "Restored MP4 missing vivoMediaExtInfo" }
+        if (expectedNames != null) {
+            require(image.displayName == expectedNames.imageName) { "MediaStore renamed restored image" }
+            require(video.displayName == expectedNames.videoName) { "MediaStore renamed restored video" }
+        }
+        if (expectedRelativePath != null) {
+            require(image.relativePath == expectedRelativePath) { "Restored image path mismatch" }
+            require(video.relativePath == expectedRelativePath) { "Restored video path mismatch" }
+        }
+    }
+}
+
+object RestoreTempFiles {
+    fun <T> withFiles(
+        directory: java.io.File,
+        creator: (String, String, java.io.File) -> java.io.File = java.io.File::createTempFile,
+        block: (java.io.File, java.io.File) -> T,
+    ): T {
+        check((directory.isDirectory || directory.mkdirs()) && directory.isDirectory) {
+            "无法创建恢复临时目录"
+        }
+        var image: java.io.File? = null
+        var video: java.io.File? = null
+        try {
+            image = creator("image-", ".jpg", directory)
+            video = creator("video-", ".mp4", directory)
+            return block(image, video)
+        } finally {
+            image?.delete()
+            video?.delete()
+        }
     }
 }
 

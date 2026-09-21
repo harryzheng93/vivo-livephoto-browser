@@ -21,12 +21,12 @@ class DownloadedLivePhotoVerifierTest {
     }
 
     @Test(expected = IllegalArgumentException::class)
-    fun `rejects modified image SHA`() = withFiles(imageBytes + 1, videoBytes) { image, video ->
+    fun `rejects modified image SHA`() = withFiles(imageBytes.copyOf().apply { this[0] = 'X'.code.toByte() }, videoBytes) { image, video ->
         DownloadedLivePhotoVerifier.verify(manifest(), image, video)
     }
 
     @Test(expected = IllegalArgumentException::class)
-    fun `rejects modified video SHA`() = withFiles(imageBytes, videoBytes + 1) { image, video ->
+    fun `rejects modified video SHA`() = withFiles(imageBytes, videoBytes.copyOf().apply { this[0] = 'X'.code.toByte() }) { image, video ->
         DownloadedLivePhotoVerifier.verify(manifest(), image, video)
     }
 

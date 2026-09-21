@@ -48,6 +48,16 @@ class AndroidMediaStoreGateway(private val resolver: ContentResolver) : RestoreM
 
     override fun inspect(ref: MediaRef, kind: MediaKind): PostWriteMedia {
         val uri = Uri.parse(ref.uri)
+        val mediaIdentity = resolver.query(
+            uri,
+            arrayOf(MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.RELATIVE_PATH),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            check(cursor.moveToFirst()) { "Cannot query restored MediaStore row" }
+            cursor.getString(0) to cursor.getString(1)
+        } ?: error("Cannot query restored MediaStore row")
         val digest = requireNotNull(resolver.openInputStream(uri)) { "Cannot reopen MediaStore row" }
             .use(::sha256)
         val livePhotoId = requireNotNull(resolver.openInputStream(uri)) { "Cannot reopen MediaStore row" }
@@ -58,7 +68,7 @@ class AndroidMediaStoreGateway(private val resolver: ContentResolver) : RestoreM
         } else {
             false
         }
-        return PostWriteMedia(digest, livePhotoId, marker)
+        return PostWriteMedia(digest, livePhotoId, marker, mediaIdentity.first, mediaIdentity.second)
     }
 
     override fun publish(ref: MediaRef) {

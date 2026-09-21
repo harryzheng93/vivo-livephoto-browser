@@ -37,6 +37,13 @@ class LivePhotoRestoreCoordinatorTest {
     }
 
     @Test
+    fun `provider rename of one row fails and deletes both rows`() {
+        val gateway = FakeGateway(actualVideoName = "IMG_1 (1).mp4")
+        expectFailure(gateway)
+        assertTrue(gateway.events.takeLast(2) == listOf("delete:video", "delete:image"))
+    }
+
+    @Test
     fun `second publish failure deletes published image and pending video`() {
         val gateway = FakeGateway(throwAt = "publish:video")
         expectFailure(gateway)
@@ -65,6 +72,7 @@ class LivePhotoRestoreCoordinatorTest {
     private class FakeGateway(
         private val throwAt: String? = null,
         private val invalidVideoInspection: Boolean = false,
+        private val actualVideoName: String = "IMG_1.mp4",
     ) : RestoreMediaGateway {
         val events = mutableListOf<String>()
 
@@ -88,9 +96,15 @@ class LivePhotoRestoreCoordinatorTest {
         override fun inspect(ref: MediaRef, kind: MediaKind): PostWriteMedia {
             record("inspect:${ref.uri}")
             return if (kind == MediaKind.IMAGE) {
-                PostWriteMedia(IMAGE_SHA, LIVE_ID, false)
+                PostWriteMedia(IMAGE_SHA, LIVE_ID, false, "IMG_1.jpg", LivePhotoRestoreCoordinator.RELATIVE_PATH)
             } else {
-                PostWriteMedia(if (invalidVideoInspection) "0".repeat(64) else VIDEO_SHA, LIVE_ID, true)
+                PostWriteMedia(
+                    if (invalidVideoInspection) "0".repeat(64) else VIDEO_SHA,
+                    LIVE_ID,
+                    true,
+                    actualVideoName,
+                    LivePhotoRestoreCoordinator.RELATIVE_PATH,
+                )
             }
         }
 

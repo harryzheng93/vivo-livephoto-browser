@@ -24,4 +24,9 @@ class ServerEndpointTest {
     fun `rejects non HTTP input`() {
         ServerEndpoint.fromUserInput("ftp://192.168.1.10")
     }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `rejects malformed URI as validation error`() {
+        ServerEndpoint.fromUserInput("http://example.test/bad path")
+    }
 }

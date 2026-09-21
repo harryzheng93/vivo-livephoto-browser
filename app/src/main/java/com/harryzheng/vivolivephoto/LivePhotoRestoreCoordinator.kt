@@ -41,7 +41,13 @@ class LivePhotoRestoreCoordinator(private val gateway: RestoreMediaGateway) {
 
             val imagePostWrite = gateway.inspect(image, MediaKind.IMAGE)
             val videoPostWrite = gateway.inspect(video, MediaKind.VIDEO)
-            RestoreValidation.requirePostWriteMatch(verified, imagePostWrite, videoPostWrite)
+            RestoreValidation.requirePostWriteMatch(
+                verified,
+                imagePostWrite,
+                videoPostWrite,
+                names,
+                RELATIVE_PATH,
+            )
             gateway.publish(image)
             gateway.publish(video)
             return RestoreResult(image, video, names, imagePostWrite, videoPostWrite)
