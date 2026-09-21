@@ -14,12 +14,44 @@ import socket
 import socketserver
 import subprocess
 import time
-from livephoto_store import persist_verified_item
+from urllib.parse import urlsplit, parse_qs
+from livephoto_store import persist_verified_item, list_items, load_item, media_path
 
 HOST = "0.0.0.0"
 PORT = 8000
 MAX_UPLOAD_BYTES = 250 * 1024 * 1024
 SAVE_ROOT = os.path.abspath("livephoto_uploads")
+
+GALLERY_HTML = """<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>vivo Live Photo 预览</title>
+<style>
+body{font:16px system-ui,sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem;background:#f5f5f2;color:#202420}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem}
+article{background:white;padding:1rem;border-radius:16px;box-shadow:0 2px 12px #0001}
+.media{position:relative;aspect-ratio:4/3;background:#222;border-radius:10px;overflow:hidden;touch-action:pan-y}
+img,video{width:100%;height:100%;object-fit:contain}video{display:none}p{overflow-wrap:anywhere}
+a,button{margin-right:.8rem}
+</style><h1>Live Photo 预览</h1><p>按住照片播放动态画面，松开后返回静态照片。</p><main class="grid" id="items"></main>
+<script>
+const host=document.getElementById('items');
+fetch('/api/live-photos').then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.json()}).then(data=>{
+ for(const item of data.items){
+  const card=document.createElement('article'),media=document.createElement('div');media.className='media';
+  const img=document.createElement('img');img.src=item.imageUrl;img.alt=item.imageFilename;
+  const video=document.createElement('video');video.src=item.videoUrl;video.muted=true;video.playsInline=true;video.preload='none';
+  function play(){img.style.display='none';video.style.display='block';video.currentTime=0;video.play().catch(()=>stop())}
+  function stop(){video.pause();video.currentTime=0;video.style.display='none';img.style.display='block'}
+  media.addEventListener('pointerdown',play);for(const event of ['pointerup','pointercancel','pointerleave'])media.addEventListener(event,stop);
+  media.append(img,video);card.append(media);
+  const title=document.createElement('p');title.textContent=item.createdAt+' · '+item.imageFilename+' · '+item.livePhotoId;card.append(title);
+  const button=document.createElement('button');button.type='button';button.textContent='播放 / 停止';button.addEventListener('click',()=>video.style.display==='block'?stop():play());card.append(button);
+  for(const [label,url] of [['下载 JPG',item.imageUrl],['下载 MP4',item.videoUrl]]){
+   const link=document.createElement('a');link.textContent=label;link.href=url+'?download=1';card.append(link)
+  }host.append(card)
+ }
+}).catch(error=>{const p=document.createElement('p');p.textContent='加载失败：'+error.message;host.append(p)});
+</script></html>"""
 
 LIVE_PHOTO_ID_RE = re.compile(
     br'com\.android\.camera\.livephoto(?:\\?\")?\s*[:=]\s*(?:\\?\")?([0-9a-f]{28})',
@@ -188,6 +220,21 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _send_bytes(self, status, data, content_type, filename=None):
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        if filename:
+            self.send_header("Content-Disposition", 'attachment; filename="%s"' % filename)
+        self.end_headers()
+        self.wfile.write(data)
+
+    @staticmethod
+    def _with_urls(item):
+        path = "/api/live-photo/" + item["itemId"]
+        return dict(item, metadataUrl=path, imageUrl=path + "/image",
+                    videoUrl=path + "/video", galleryUrl="/gallery")
+
     def _read_body(self):
         transfer_encoding = self.headers.get("Transfer-Encoding", "").lower()
         if "chunked" in transfer_encoding:
@@ -202,8 +249,33 @@ class Handler(BaseHTTPRequestHandler):
         return _read_exact(self.rfile, length)
 
     def do_GET(self):
-        if self.path in ("/", "/health"):
+        url = urlsplit(self.path)
+        path = url.path
+        if path in ("/", "/health"):
             self._send_json(200, {"ok": True, "endpoint": "/api/live-photo"})
+        elif path == "/api/live-photos":
+            self._send_json(200, {"items": [self._with_urls(item) for item in list_items(self.save_root)]})
+        elif path == "/gallery":
+            self._send_bytes(200, GALLERY_HTML.encode("utf-8"), "text/html; charset=utf-8")
+        elif path.startswith("/api/live-photo/"):
+            parts = path.split("/")
+            try:
+                if len(parts) not in (4, 5):
+                    raise KeyError(path)
+                item_id = parts[3]
+                item = load_item(self.save_root, item_id)
+                if len(parts) == 4:
+                    self._send_json(200, self._with_urls(item))
+                elif parts[4] in ("image", "video"):
+                    kind = parts[4]
+                    with open(media_path(self.save_root, item_id, kind), "rb") as source:
+                        data = source.read()
+                    filename = item[kind + "Filename"] if parse_qs(url.query).get("download") == ["1"] else None
+                    self._send_bytes(200, data, item[kind + "ContentType"], filename)
+                else:
+                    raise KeyError(path)
+            except KeyError:
+                self._send_json(404, {"success": False, "error": "not found"})
         else:
             self._send_json(404, {"success": False, "error": "not found"})
 
@@ -236,6 +308,7 @@ class Handler(BaseHTTPRequestHandler):
                 image_name = item["imageFilename"]
                 video_name = item["videoFilename"]
                 result["itemId"] = item["itemId"]
+                result.update({key: value for key, value in self._with_urls(item).items() if key.endswith("Url")})
             else:
                 stamp = time.strftime("%Y%m%d_%H%M%S")
                 request_dir = os.path.join(self.save_root, stamp + "_%d" % int((time.time() % 1) * 1000))
