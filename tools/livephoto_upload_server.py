@@ -14,6 +14,7 @@ import socket
 import socketserver
 import subprocess
 import time
+from livephoto_store import persist_verified_item
 
 HOST = "0.0.0.0"
 PORT = 8000
@@ -174,6 +175,7 @@ class SafeThreadingHTTPServer(ThreadingHTTPServer):
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "VivoLivePhotoUploadTest/1.0"
+    save_root = SAVE_ROOT
 
     def log_message(self, fmt, *args):
         print("[%s] %s" % (self.address_string(), fmt % args))
@@ -228,19 +230,22 @@ class Handler(BaseHTTPRequestHandler):
             video = files["video"]
             result = verify_pair(image["data"], video["data"], submitted_id)
 
-            stamp = time.strftime("%Y%m%d_%H%M%S")
-            request_dir = os.path.join(SAVE_ROOT, stamp + "_%d" % int((time.time() % 1) * 1000))
-            os.makedirs(request_dir, exist_ok=True)
-
-            image_name = _safe_filename(image["filename"], "image.jpg")
-            video_name = _safe_filename(video["filename"], "video.mp4")
-            image_path = os.path.join(request_dir, image_name)
-            video_path = os.path.join(request_dir, video_name)
-
-            with open(image_path, "wb") as f:
-                f.write(image["data"])
-            with open(video_path, "wb") as f:
-                f.write(video["data"])
+            if result["success"]:
+                item = persist_verified_item(self.save_root, image, video, result)
+                request_dir = os.path.join(self.save_root, item["itemId"])
+                image_name = item["imageFilename"]
+                video_name = item["videoFilename"]
+                result["itemId"] = item["itemId"]
+            else:
+                stamp = time.strftime("%Y%m%d_%H%M%S")
+                request_dir = os.path.join(self.save_root, stamp + "_%d" % int((time.time() % 1) * 1000))
+                os.makedirs(request_dir, exist_ok=True)
+                image_name = _safe_filename(image["filename"], "image.jpg")
+                video_name = _safe_filename(video["filename"], "video.mp4")
+                with open(os.path.join(request_dir, image_name), "wb") as f:
+                    f.write(image["data"])
+                with open(os.path.join(request_dir, video_name), "wb") as f:
+                    f.write(video["data"])
 
             result.update({
                 "image_filename": image_name,
