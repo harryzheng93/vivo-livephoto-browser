@@ -43,4 +43,5 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.10.1")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

@@ -20,6 +20,14 @@ class UploadEndpointTest {
         )
     }
 
+    @Test
+    fun `normalizes API endpoint through server endpoint`() {
+        assertEquals(
+            "https://example.test/api/live-photo",
+            UploadEndpoint.fromUserInput("https://example.test/api/live-photo/")
+        )
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun `rejects non http endpoints`() {
         UploadEndpoint.fromUserInput("ftp://192.168.1.10/upload")
