@@ -1,0 +1,6 @@
+.gradle/
+local.properties
+**/build/
+livephoto_uploads/
+.idea/
+*.iml
