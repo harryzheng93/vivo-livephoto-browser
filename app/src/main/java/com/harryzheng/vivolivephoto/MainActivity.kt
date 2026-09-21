@@ -1,12 +1,16 @@
 package com.harryzheng.vivolivephoto
 
 import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.widget.Button
+import android.widget.ArrayAdapter
 import android.widget.EditText
+import android.widget.Spinner
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -16,7 +20,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var resultText: TextView
     private lateinit var serverUrlInput: EditText
     private lateinit var uploadButton: Button
+    private lateinit var serverItemSpinner: Spinner
+    private lateinit var restoreButton: Button
+    private lateinit var openRestoredButton: Button
     private var lastPairResult: PairSearchResult? = null
+    private var serverItems: List<ServerLivePhotoItem> = emptyList()
+    private var restoredImageUri: Uri? = null
 
     private val imagePicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) inspect(uri)
@@ -36,6 +45,9 @@ class MainActivity : AppCompatActivity() {
         resultText = findViewById(R.id.resultText)
         serverUrlInput = findViewById(R.id.serverUrlInput)
         uploadButton = findViewById(R.id.uploadButton)
+        serverItemSpinner = findViewById(R.id.serverItemSpinner)
+        restoreButton = findViewById(R.id.restoreButton)
+        openRestoredButton = findViewById(R.id.openRestoredButton)
 
         findViewById<Button>(R.id.selectButton).setOnClickListener {
             clearCurrentPair()
@@ -48,7 +60,122 @@ class MainActivity : AppCompatActivity() {
         }
 
         uploadButton.setOnClickListener { uploadCurrentPair() }
+        findViewById<Button>(R.id.openGalleryButton).setOnClickListener { openWebGallery() }
+        findViewById<Button>(R.id.loadServerItemsButton).setOnClickListener { loadServerItems() }
+        restoreButton.setOnClickListener { restoreSelectedItem() }
+        openRestoredButton.setOnClickListener { openRestoredImage() }
         resultText.text = permissionSummary() + "\n\n等待选择照片。"
+    }
+
+    private fun configuredEndpoint(): ServerEndpoint =
+        ServerEndpoint.fromUserInput(serverUrlInput.text.toString())
+
+    private fun openWebGallery() {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(configuredEndpoint().galleryUrl)))
+        } catch (e: Exception) {
+            resultText.append("\n\nGALLERY ERROR\n${e.message ?: e::class.java.simpleName}")
+        }
+    }
+
+    private fun loadServerItems() {
+        val endpoint = try {
+            configuredEndpoint()
+        } catch (e: IllegalArgumentException) {
+            resultText.append("\n\nSERVER ERROR\n${e.message ?: "服务器地址无效"}")
+            return
+        }
+        restoreButton.isEnabled = false
+        resultText.append("\n\nSERVER LIST\n正在加载 ${endpoint.listUrl} …")
+        Thread {
+            try {
+                val items = LivePhotoServerClient(endpoint).list()
+                runOnUiThread {
+                    serverItems = items
+                    val labels = items.map {
+                        "${it.createdAt} · ${it.imageFilename} · ${it.livePhotoId.take(8)}…"
+                    }
+                    serverItemSpinner.adapter = ArrayAdapter(
+                        this,
+                        android.R.layout.simple_spinner_item,
+                        labels,
+                    ).apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+                    restoreButton.isEnabled = items.isNotEmpty() && Build.VERSION.SDK_INT >= 29
+                    resultText.append("\n加载完成：${items.size} 项。")
+                    if (Build.VERSION.SDK_INT < 29) {
+                        resultText.append("\n恢复功能需要 Android 10 / API 29+。")
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    serverItems = emptyList()
+                    restoreButton.isEnabled = false
+                    resultText.append("\nSERVER ERROR\n${e::class.java.simpleName}: ${e.message ?: "(no message)"}")
+                }
+            }
+        }.start()
+    }
+
+    private fun restoreSelectedItem() {
+        if (Build.VERSION.SDK_INT < 29) {
+            resultText.append("\n\n恢复功能需要 Android 10 / API 29+。")
+            return
+        }
+        val selected = serverItems.getOrNull(serverItemSpinner.selectedItemPosition) ?: return
+        val endpoint = try {
+            configuredEndpoint()
+        } catch (e: IllegalArgumentException) {
+            resultText.append("\n\nRESTORE ERROR\n${e.message ?: "服务器地址无效"}")
+            return
+        }
+        restoreButton.isEnabled = false
+        restoredImageUri = null
+        openRestoredButton.isEnabled = false
+        resultText.append("\n\nRESTORE\n正在下载并校验 ${selected.imageFilename} …")
+
+        Thread {
+            val tempDirectory = java.io.File(cacheDir, "livephoto_restore")
+            tempDirectory.mkdirs()
+            val imageFile = java.io.File.createTempFile("image-", ".jpg", tempDirectory)
+            val videoFile = java.io.File.createTempFile("video-", ".mp4", tempDirectory)
+            try {
+                val client = LivePhotoServerClient(endpoint)
+                val manifest = client.manifest(selected.itemId)
+                client.download(manifest.imageUrl, imageFile)
+                client.download(manifest.videoUrl, videoFile)
+                val verified = DownloadedLivePhotoVerifier.verify(manifest, imageFile, videoFile)
+                val restored = LivePhotoRestoreCoordinator(
+                    AndroidMediaStoreGateway(contentResolver),
+                ).restore(verified)
+                runOnUiThread {
+                    restoredImageUri = Uri.parse(restored.image.uri)
+                    openRestoredButton.isEnabled = true
+                    restoreButton.isEnabled = serverItems.isNotEmpty()
+                    resultText.append("\n\n${RestoreDiagnostics.format(restored)}")
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    restoreButton.isEnabled = serverItems.isNotEmpty()
+                    resultText.append("\n\nRESTORE ERROR\n${e::class.java.simpleName}: ${e.message ?: "(no message)"}")
+                }
+            } finally {
+                imageFile.delete()
+                videoFile.delete()
+            }
+        }.start()
+    }
+
+    private fun openRestoredImage() {
+        val uri = restoredImageUri ?: return
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "image/jpeg")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try {
+            startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            resultText.append("\n\n没有可打开恢复照片的应用。")
+        }
     }
 
     private fun clearCurrentPair() {

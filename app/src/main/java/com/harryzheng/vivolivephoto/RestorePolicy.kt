@@ -45,3 +45,17 @@ object RestoreValidation {
         require(video.hasVivoMediaExtInfo) { "Restored MP4 missing vivoMediaExtInfo" }
     }
 }
+
+object RestoreDiagnostics {
+    fun format(result: RestoreResult): String = buildString {
+        appendLine("RESTORE_VALIDATED = TRUE")
+        appendLine("image name: ${result.names.imageName}")
+        appendLine("image uri: ${result.image.uri}")
+        appendLine("image livePhotoId: ${result.imagePostWrite.livePhotoId}")
+        appendLine("video name: ${result.names.videoName}")
+        appendLine("video uri: ${result.video.uri}")
+        appendLine("video livePhotoId: ${result.videoPostWrite.livePhotoId}")
+        appendLine("vivoMediaExtInfo: ${result.videoPostWrite.hasVivoMediaExtInfo}")
+        append("请在 vivo 相册中检查动态照片标识和按住播放；以上只证明公开 MediaStore 恢复后的字节与元数据校验通过。")
+    }
+}

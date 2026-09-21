@@ -59,6 +59,67 @@ The server decodes chunked HTTP bodies, saves both original media files under `l
 
 `success: true` means the complete chain is verified: MediaStore pairing on the phone, unmodified JPG/MP4 multipart transfer, and server-side ID re-validation.
 
+## 5. Preview the indexed pair in a browser
+
+After a successful upload, open the server base URL plus `/gallery`, for example:
+
+```text
+http://192.168.1.100:8000/gallery
+```
+
+Verify all of the following:
+
+- The JPG is visible while idle.
+- Pressing and holding the card plays the MP4; releasing returns to the JPG.
+- The play/stop button works independently.
+- The JPG and MP4 download links return the original files.
+
+This is a browser Live Photo-style preview. It does not mean the browser natively recognizes vivo's format.
+
+## 6. Download and restore on the vivo X200s
+
+1. Keep the PC server running and the phone on the same LAN.
+2. In the app, keep the same server address and tap **加载服务器 Live Photo**.
+3. Select the uploaded item in the list.
+4. Tap **下载并恢复到 vivo 相册**.
+5. Wait for the diagnostic output to report `RESTORE_VALIDATED = TRUE`.
+
+Before creating public media rows, the app verifies both SHA-256 values, both 28-character Live Photo IDs, and `vivoMediaExtInfo`. It then writes a same-basename JPG + MP4 pair under `DCIM/Camera/` using pending MediaStore rows, reopens both rows, and repeats the integrity and metadata checks before publishing. Any failure rolls back both rows and deletes the temporary downloads.
+
+`RESTORE_VALIDATED = TRUE` means the public MediaStore copies preserve the expected bytes and vivo metadata. It is not a claim that vivo Gallery has recognized the pair as a dynamic photo.
+
+## 7. Record the vivo Gallery observation
+
+1. Tap **打开恢复后的照片** and choose vivo Gallery if Android shows an app chooser.
+2. Inspect the restored image and record:
+
+```text
+dynamic-photo badge: YES / NO
+press/hold dynamic playback: YES / NO
+```
+
+Also retain the app diagnostic block containing both restored filenames, both post-write IDs, `vivoMediaExtInfo: true`, and `RESTORE_VALIDATED = TRUE`.
+
+A validated MediaStore restore that remains static in vivo Gallery is a valid experimental result. Record both observations as `NO`; that result triggers a separate investigation of vendor-private registration/index state. Do not write private vivo databases or delete the original photo as part of this feature.
+
+## 8. Expected acceptance record
+
+```text
+Browser:
+- /gallery loads: YES / NO
+- JPG idle preview: YES / NO
+- MP4 press/play preview: YES / NO
+- original downloads verified: YES / NO
+
+Android restore:
+- RESTORE_VALIDATED = TRUE / FALSE
+- paired basename under DCIM/Camera/: YES / NO
+
+vivo Gallery observation:
+- dynamic-photo badge: YES / NO
+- press/hold dynamic playback: YES / NO
+```
+
 ## Scope and security
 
 This is a local diagnostic tool. The debug app permits cleartext HTTP to support a LAN-only test server. A production uploader should use HTTPS, authentication, server-side size limits, and production storage controls.
